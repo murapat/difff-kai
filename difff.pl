@@ -16,9 +16,9 @@ use utf8 ;
 use POSIX ;
 
 # 保存したHTMLファイルから作業を再開できるよう、FORMの送り先に完全URLを指定
-my $url = 'https://difff.jp/' ;
+# my $url = 'https://difff.jp/' ;
 # 保存したHTMLファイルから作業を再開できなくてもよい場合は相対パスを指定
-# my $url = './' ;
+my $url = './' ;
 
 my $diffcmd = '/usr/bin/diff' ;  # diffコマンドのパスを指定
 my $fifodir = '/tmp' ;           # FIFOを作成するディレクトリを指定
