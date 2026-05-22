@@ -1,0 +1,350 @@
+<!DOCTYPE HTML PUBLIC '-//W3C//DTD HTML 4.01 Transitional//EN'>
+<html>
+
+<head>
+<meta http-equiv='Content-Type' content='text/html; charset=utf-8'>
+<meta http-equiv='Content-Script-Type' content='text/javascript'>
+<meta http-equiv='Content-Style-Type' content='text/css'>
+<meta name='author' content='Yuki Naito'>
+<title>difff Revised - text compare</title>
+<script type='text/javascript'>
+<!--
+	function hideForm() {
+		if (document.getElementById('form').style.display == 'none') {
+			document.getElementById('top' ).style.display = 'block';
+			document.getElementById('form').style.display = 'block';
+			document.getElementById('hide').value = 'Hide form (print friendly)';
+		} else {
+			document.getElementById('top' ).style.display = 'none';
+			document.getElementById('form').style.display = 'none';
+			document.getElementById('hide').value = 'Show all';
+		}
+	}
+	function setColor1() {
+		document.getElementById('top').style.borderTop = '5px solid #00BBFF';
+		var emList = document.getElementsByTagName('em');
+		for (i = 0; i < emList.length; i++) {
+			emList[i].className = 'blue' ;
+		}
+	}
+	function setColor2() {
+		document.getElementById('top').style.borderTop = '5px solid #00bb00';
+		var emList = document.getElementsByTagName('em');
+		for (i = 0; i < emList.length; i++) {
+			emList[i].className = 'green' ;
+		}
+	}
+	function setColor3() {
+		document.getElementById('top').style.borderTop = '5px solid black';
+		var emList = document.getElementsByTagName('em');
+		for (i = 0; i < emList.length; i++) {
+			emList[i].className = 'black' ;
+		}
+	}
+
+	// --- JavaScript Port: Diff Compare and Word Count Logic ---
+	function escapeChar(string) {
+		if (!string) return '';
+		return string
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/'/g, '&#39;')
+			.replace(/"/g, '&quot;');
+	}
+
+	function escapeSpace(string) {
+		if (!string) return '';
+		return string.replace(/ {2,}/g, m => '&nbsp;'.repeat(m.length)).replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;');
+	}
+
+	function splitText(text) {
+		if (!text) return [];
+		// Standardize line breaks
+		text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+		// Convert original line breaks to <$>
+		text = text.replace(/\n/g, '<$>');
+		
+		const tokens = [];
+		let temp = text;
+		// Words (alphanumeric sequences), line break placeholders, HTML entities, or any other single character
+		const regex = /^([a-zA-Z0-9]+|<\$>|&#?\w+;|[\s\S])/;
+		while (temp.length > 0) {
+			const match = temp.match(regex);
+			if (match) {
+				tokens.push(match[1]);
+				temp = temp.substring(match[1].length);
+			} else {
+				tokens.push(temp[0]);
+				temp = temp.substring(1);
+			}
+		}
+		return tokens;
+	}
+
+	function countChar(text) {
+		if (!text) return [0, 0, 0, 0];
+		
+		// Word count
+		const wordsMatch = text.match(/\s*\S+/g);
+		const wcount = wordsMatch ? wordsMatch.length : 0;
+		
+		// Remove CR for character counts
+		const cleanText = text.replace(/\r/g, '');
+		const count3 = cleanText.length; // Including newlines & spaces
+		
+		const noNewline = cleanText.replace(/\n/g, '');
+		const count2 = noNewline.length; // Excluding newlines, including spaces
+		
+		const noSpace = noNewline.replace(/\s/g, '');
+		const count1 = noSpace.length; // Excluding both newlines & spaces
+		
+		return [count1, count2, count3, wcount];
+	}
+
+	function diffLCS(A, B) {
+		const N = A.length;
+		const M = B.length;
+		
+		// Build LCS DP Table
+		const dp = Array.from({ length: N + 1 }, () => new Int32Array(M + 1));
+		
+		for (let i = 1; i <= N; i++) {
+			for (let j = 1; j <= M; j++) {
+				if (A[i - 1] === B[j - 1]) {
+					dp[i][j] = dp[i - 1][j - 1] + 1;
+				} else {
+					dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+				}
+			}
+		}
+		
+		// Backtrack path
+		let i = N, j = M;
+		const aEm = new Uint8Array(N);
+		const bEm = new Uint8Array(M);
+		
+		while (i > 0 || j > 0) {
+			if (i > 0 && j > 0 && A[i - 1] === B[j - 1]) {
+				i--;
+				j--;
+			} else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+				bEm[j - 1] = 1;
+				j--;
+			} else if (i > 0 && (j === 0 || dp[i][j - 1] < dp[i - 1][j])) {
+				aEm[i - 1] = 1;
+				i--;
+			}
+		}
+		
+		const aResult = [...A];
+		const bResult = [...B];
+		
+		// Highlight deletions (A)
+		let inEm = false;
+		for (let k = 0; k < N; k++) {
+			if (aEm[k] === 1) {
+				if (!inEm) {
+					aResult[k] = '<em>' + aResult[k];
+					inEm = true;
+				}
+				if (k === N - 1 || aEm[k + 1] === 0) {
+					aResult[k] = aResult[k] + '</em>';
+					inEm = false;
+				}
+			}
+		}
+		
+		// Highlight additions (B)
+		inEm = false;
+		for (let k = 0; k < M; k++) {
+			if (bEm[k] === 1) {
+				if (!inEm) {
+					bResult[k] = '<em>' + bResult[k];
+					inEm = true;
+				}
+				if (k === M - 1 || bEm[k + 1] === 0) {
+					bResult[k] = bResult[k] + '</em>';
+					inEm = false;
+				}
+			}
+		}
+		
+		return [aResult, bResult];
+	}
+
+	function compareAndRender() {
+		const seqA = document.difff.sequenceA.value;
+		const seqB = document.difff.sequenceB.value;
+		
+		// HTML Escape
+		const escA = escapeChar(seqA);
+		const escB = escapeChar(seqB);
+		
+		// Tokenize
+		const tokensA = splitText(escA);
+		const tokensB = splitText(escB);
+		
+		// Calculate Diff
+		const [resA, resB] = diffLCS(tokensA, tokensB);
+		
+		let aFinalStr = resA.join('');
+		let bFinalStr = resB.join('');
+		
+		// Adjust <em> tags crossing <td> (line breaks <$>)
+		const emCrossRegex = /(<em>[^<>]*)<\$>((?:[^<>]|<\$>)*<\/em>)/g;
+		while (emCrossRegex.test(aFinalStr)) {
+			aFinalStr = aFinalStr.replace(emCrossRegex, '$1</i><$><em>$2');
+		}
+		while (emCrossRegex.test(bFinalStr)) {
+			bFinalStr = bFinalStr.replace(emCrossRegex, '$1</i><$><em>$2');
+		}
+		
+		// Split by <$> to get line array
+		const aFinalLines = aFinalStr.split('<$>');
+		const bFinalLines = bFinalStr.split('<$>');
+		
+		const maxLines = Math.max(aFinalLines.length, bFinalLines.length);
+		let tableContent = '';
+		
+		for (let idx = 0; idx < maxLines; idx++) {
+			let aLine = aFinalLines[idx] !== undefined ? aFinalLines[idx] : '';
+			let bLine = bFinalLines[idx] !== undefined ? bFinalLines[idx] : '';
+			
+			// Escape spaces and tabs
+			aLine = escapeSpace(aLine);
+			bLine = escapeSpace(bLine);
+			
+			tableContent += `<tr>\n\t<td>${aLine}</td>\n\t<td>${bLine}</td>\n</tr>\n`;
+		}
+		
+		// Word and Character Counts
+		const countsA = countChar(seqA);
+		const countsB = countChar(seqB);
+		
+		tableContent += `
+<tr>
+\t<td><font color=gray>
+\t\t${countsA[3]} words<br>
+\t\t${countsA[0]} chars<br>
+\t\t${countsA[1] - countsA[0]} spaces (sum: ${countsA[1]} chars)<br>
+\t\t${countsA[2] - countsA[1]} linefeeds (sum: ${countsA[2]} chars)
+\t</font></td>
+\t<td><font color=gray>
+\t\t${countsB[3]} words<br>
+\t\t${countsB[0]} chars<br>
+\t\t${countsB[1] - countsB[0]} spaces (sum: ${countsB[1]} chars)<br>
+\t\t${countsB[2] - countsB[1]} linefeeds (sum: ${countsB[2]} chars)
+\t</font></td>
+</tr>
+`;
+
+		const resultArea = document.getElementById('result-area');
+		resultArea.innerHTML = `
+<div id=result>
+<table cellspacing=0>
+${tableContent}</table>
+
+<p>
+\t<input type=button id=hide value='Hide form (print friendly)' onclick='hideForm()'> |
+\t<input type=radio name=color value=1 onclick='setColor1()' checked>
+\t\t<span class=blue >Color 1</span>
+\t<input type=radio name=color value=2 onclick='setColor2()'>
+\t\t<span class=green>Color 2</span>
+\t<input type=radio name=color value=3 onclick='setColor3()'>
+\t\t<span class=black>Monochrome</span>
+</p>
+</div>
+`;
+		
+		// Smooth scroll to the result
+		resultArea.scrollIntoView({ behavior: 'smooth' });
+	}
+//-->
+</script>
+<style type='text/css'>
+<!--
+	* { font-family:verdana,arial,helvetica,sans-serif }
+	p,table,textarea,ul { font-size:10pt }
+	textarea { width:100% }
+	a  { color:#3366CC }
+	.k { color:black; text-decoration:none }
+	em { font-style:normal }
+	em,
+	.blue  { font-weight:bold; color:black; background:#99EEFF; border:1px solid #00BBFF }
+	.green { font-weight:bold; color:black; background:#99FF99; border:none }
+	.black { font-weight:bold; color:white; background:black;   border:none }
+	table {
+		width:95%;
+		margin:20px;
+		table-layout:fixed;
+		word-wrap:break-word;
+		border-collapse:collapse;
+	}
+	td {
+		padding:4px 15px;
+		border-left:solid 1px silver;
+		border-right:solid 1px silver;
+	}
+	.n { border:none }
+-->
+</style>
+</head>
+
+<body>
+
+<div id=top style='border-top:5px solid #00BBFF; padding-top:10px'>
+<font size=5>
+	<a class=k href='./'>
+	<b>difff Revised</b> - online text compare </a></font>
+<font size=3>ver.0.9</font>
+&emsp;
+<font size=1 style='vertical-align:16px'>
+	English |
+	<a href='../'>Japanese</a>
+</font>
+<hr><!-- ________________________________________ -->
+</div>
+
+<div id=form>
+<p>Input two texts below and click 'compare':</p>
+
+<form method=POST id=difff name=difff onsubmit='compareAndRender(); return false;'>
+<table cellspacing=0>
+<tr>
+	<td class=n><textarea name=sequenceA rows=20>   Betty Botter bought some butter, 
+But, she said, this butter's bitter;
+If I put it in my batter,
+It will make my batter bitter,
+But a bit of better butter
+Will make my batter better.
+So she bought a bit of butter
+Better than her bitter butter,
+And she put it in her batter,
+And it made her batter better,
+So 'twas better Betty Botter
+Bought a bit of better butter.</textarea></td>
+	<td class=n><textarea name=sequenceB rows=20>Betty Botter bought some butter,
+But, she said, the butter's bitter;
+If I put it in my batter,
+That will make my batter bitter.
+But a bit of better butter, 
+That will make my batter better.
+So she bought a bit of butter
+Better than her bitter butter.
+And she put it in her batter,
+And it made her batter better.
+So it was better Betty Botter
+Bought a bit of better butter.</textarea></td>
+</tr>
+</table>
+
+<p><input type=submit value='compare'></p>
+</form>
+</div>
+
+<!-- Dynamic result container -->
+<div id="result-area"></div>
+
+</body>
+</html>

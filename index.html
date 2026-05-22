@@ -1,0 +1,353 @@
+<!DOCTYPE HTML PUBLIC '-//W3C//DTD HTML 4.01 Transitional//EN'>
+<html lang=ja>
+
+<head>
+<meta http-equiv='Content-Type' content='text/html; charset=utf-8'>
+<meta http-equiv='Content-Script-Type' content='text/javascript'>
+<meta http-equiv='Content-Style-Type' content='text/css'>
+<meta name='author' content='Yuki Naito'>
+<title>デュフフ改</title>
+<script type='text/javascript'>
+<!--
+	function hideForm() {
+		if (document.getElementById('form').style.display == 'none') {
+			document.getElementById('top' ).style.display = 'block';
+			document.getElementById('form').style.display = 'block';
+			document.getElementById('hide').value = '結果のみ表示 (印刷用)';
+		} else {
+			document.getElementById('top' ).style.display = 'none';
+			document.getElementById('form').style.display = 'none';
+			document.getElementById('hide').value = '全体を表示';
+		}
+	}
+	function setColor1() {
+		document.getElementById('top').style.borderTop = '5px solid #00BBFF';
+		var emList = document.getElementsByTagName('em');
+		for (i = 0; i < emList.length; i++) {
+			emList[i].className = 'blue' ;
+		}
+	}
+	function setColor2() {
+		document.getElementById('top').style.borderTop = '5px solid #00bb00';
+		var emList = document.getElementsByTagName('em');
+		for (i = 0; i < emList.length; i++) {
+			emList[i].className = 'green' ;
+		}
+	}
+	function setColor3() {
+		document.getElementById('top').style.borderTop = '5px solid black';
+		var emList = document.getElementsByTagName('em');
+		for (i = 0; i < emList.length; i++) {
+			emList[i].className = 'black' ;
+		}
+	}
+
+	// --- JavaScript移植版 差分比較・文字数カウントロジック ---
+	function escapeChar(string) {
+		if (!string) return '';
+		return string
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/'/g, '&#39;')
+			.replace(/"/g, '&quot;');
+	}
+
+	function escapeSpace(string) {
+		if (!string) return '';
+		// タグやエンティティを保護しつつ、半角スペースの連続を &nbsp; に、タブを4つの &nbsp; に変換
+		return string.replace(/ {2,}/g, m => '&nbsp;'.repeat(m.length)).replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;');
+	}
+
+	function splitText(text) {
+		if (!text) return [];
+		// 改行コードの標準化
+		text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+		// もともとの改行を <$> に変換
+		text = text.replace(/\n/g, '<$>');
+		
+		const tokens = [];
+		let temp = text;
+		// 英数字の連続、改行プレースホルダー、実体参照、またはそれ以外の1文字
+		const regex = /^([a-zA-Z0-9]+|<\$>|&#?\w+;|[\s\S])/;
+		while (temp.length > 0) {
+			const match = temp.match(regex);
+			if (match) {
+				tokens.push(match[1]);
+				temp = temp.substring(match[1].length);
+			} else {
+				tokens.push(temp[0]);
+				temp = temp.substring(1);
+			}
+		}
+		return tokens;
+	}
+
+	function countChar(text) {
+		if (!text) return [0, 0, 0, 0];
+		
+		// 単語数のカウント
+		const wordsMatch = text.match(/\s*\S+/g);
+		const wcount = wordsMatch ? wordsMatch.length : 0;
+		
+		// CRを取り除いてカウント
+		const cleanText = text.replace(/\r/g, '');
+		const count3 = cleanText.length; // 改行・空白込み
+		
+		const noNewline = cleanText.replace(/\n/g, '');
+		const count2 = noNewline.length; // 改行なし・空白込み
+		
+		const noSpace = noNewline.replace(/\s/g, '');
+		const count1 = noSpace.length; // 改行なし・空白なし
+		
+		return [count1, count2, count3, wcount];
+	}
+
+	function diffLCS(A, B) {
+		const N = A.length;
+		const M = B.length;
+		
+		// DP（動的計画法）テーブル構築
+		const dp = Array.from({ length: N + 1 }, () => new Int32Array(M + 1));
+		
+		for (let i = 1; i <= N; i++) {
+			for (let j = 1; j <= M; j++) {
+				if (A[i - 1] === B[j - 1]) {
+					dp[i][j] = dp[i - 1][j - 1] + 1;
+				} else {
+					dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+				}
+			}
+		}
+		
+		// 経路復元
+		let i = N, j = M;
+		const aEm = new Uint8Array(N);
+		const bEm = new Uint8Array(M);
+		
+		while (i > 0 || j > 0) {
+			if (i > 0 && j > 0 && A[i - 1] === B[j - 1]) {
+				i--;
+				j--;
+			} else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+				bEm[j - 1] = 1;
+				j--;
+			} else if (i > 0 && (j === 0 || dp[i][j - 1] < dp[i - 1][j])) {
+				aEm[i - 1] = 1;
+				i--;
+			}
+		}
+		
+		const aResult = [...A];
+		const bResult = [...B];
+		
+		// 削除箇所をハイライト (A)
+		let inEm = false;
+		for (let k = 0; k < N; k++) {
+			if (aEm[k] === 1) {
+				if (!inEm) {
+					aResult[k] = '<em>' + aResult[k];
+					inEm = true;
+				}
+				if (k === N - 1 || aEm[k + 1] === 0) {
+					aResult[k] = aResult[k] + '</em>';
+					inEm = false;
+				}
+			}
+		}
+		
+		// 追加箇所をハイライト (B)
+		inEm = false;
+		for (let k = 0; k < M; k++) {
+			if (bEm[k] === 1) {
+				if (!inEm) {
+					bResult[k] = '<em>' + bResult[k];
+					inEm = true;
+				}
+				if (k === M - 1 || bEm[k + 1] === 0) {
+					bResult[k] = bResult[k] + '</em>';
+					inEm = false;
+				}
+			}
+		}
+		
+		return [aResult, bResult];
+	}
+
+	function compareAndRender() {
+		const seqA = document.difff.sequenceA.value;
+		const seqB = document.difff.sequenceB.value;
+		
+		// HTMLエスケープ
+		const escA = escapeChar(seqA);
+		const escB = escapeChar(seqB);
+		
+		// トークンに分割
+		const tokensA = splitText(escA);
+		const tokensB = splitText(escB);
+		
+		// 差分計算
+		const [resA, resB] = diffLCS(tokensA, tokensB);
+		
+		let aFinalStr = resA.join('');
+		let bFinalStr = resB.join('');
+		
+		// <td> (改行 <$>) をまたぐ <em> タグの調整
+		const emCrossRegex = /(<em>[^<>]*)<\$>((?:[^<>]|<\$>)*<\/em>)/g;
+		while (emCrossRegex.test(aFinalStr)) {
+			aFinalStr = aFinalStr.replace(emCrossRegex, '$1</em><$><em>$2');
+		}
+		while (emCrossRegex.test(bFinalStr)) {
+			bFinalStr = bFinalStr.replace(emCrossRegex, '$1</em><$><em>$2');
+		}
+		
+		// 改行で分割して行配列にする
+		const aFinalLines = aFinalStr.split('<$>');
+		const bFinalLines = bFinalStr.split('<$>');
+		
+		const maxLines = Math.max(aFinalLines.length, bFinalLines.length);
+		let tableContent = '';
+		
+		for (let idx = 0; idx < maxLines; idx++) {
+			let aLine = aFinalLines[idx] !== undefined ? aFinalLines[idx] : '';
+			let bLine = bFinalLines[idx] !== undefined ? bFinalLines[idx] : '';
+			
+			// 空白文字のエンティティ化
+			aLine = escapeSpace(aLine);
+			bLine = escapeSpace(bLine);
+			
+			tableContent += `<tr>\n\t<td>${aLine}</td>\n\t<td>${bLine}</td>\n</tr>\n`;
+		}
+		
+		// 文字・単語カウント
+		const countsA = countChar(seqA);
+		const countsB = countChar(seqB);
+		
+		tableContent += `
+<tr>
+\t<td><font color=gray>
+\t\t文字数: ${countsA[0]}<br>
+\t\t空白数: ${countsA[1] - countsA[0]} 空白込み文字数: ${countsA[1]}<br>
+\t\t改行数: ${countsA[2] - countsA[1]} 改行込み文字数: ${countsA[2]}<br>
+\t\t単語数: ${countsA[3]}
+\t</font></td>
+\t<td><font color=gray>
+\t\t文字数: ${countsB[0]}<br>
+\t\t空白数: ${countsB[1] - countsB[0]} 空白込み文字数: ${countsB[1]}<br>
+\t\t改行数: ${countsB[2] - countsB[1]} 改行込み文字数: ${countsB[2]}<br>
+\t\t単語数: ${countsB[3]}
+\t</font></td>
+</tr>
+`;
+
+		const resultArea = document.getElementById('result-area');
+		resultArea.innerHTML = `
+<div id=result>
+<table cellspacing=0>
+${tableContent}</table>
+
+<p>
+\t<input type=button id=hide value='結果のみ表示 (印刷用)' onclick='hideForm()'> |
+\t<input type=radio name=color value=1 onclick='setColor1()' checked>
+\t\t<span class=blue >カラー1</span>
+\t<input type=radio name=color value=2 onclick='setColor2()'>
+\t\t<span class=green>カラー2</span>
+\t<input type=radio name=color value=3 onclick='setColor3()'>
+\t\t<span class=black>モノクロ</span>
+</p>
+</div>
+`;
+		
+		// スムーズスクロールで結果へ移動
+		resultArea.scrollIntoView({ behavior: 'smooth' });
+	}
+//-->
+</script>
+<style type='text/css'>
+<!--
+	* { font-family:verdana,arial,helvetica,sans-serif }
+	p,table,textarea,ul { font-size:10pt }
+	textarea { width:100% }
+	a  { color:#3366CC }
+	.k { color:black; text-decoration:none }
+	em { font-style:normal }
+	em,
+	.blue  { font-weight:bold; color:black; background:#99EEFF; border:1px solid #00BBFF }
+	.green { font-weight:bold; color:black; background:#99FF99; border:none }
+	.black { font-weight:bold; color:white; background:black;   border:none }
+	table {
+		width:95%;
+		margin:20px;
+		table-layout:fixed;
+		word-wrap:break-word;
+		border-collapse:collapse;
+	}
+	td {
+		padding:4px 15px;
+		border-left:solid 1px silver;
+		border-right:solid 1px silver;
+	}
+	.n { border:none }
+-->
+</style>
+</head>
+
+<body>
+
+<div id=top style='border-top:5px solid #00BBFF; padding-top:10px'>
+<font size=5>
+	<a class=k href='./'>
+	テキスト比較ツール デュフフ改</a></font>
+<font size=3>ver.0.9</font>
+&emsp;
+<font size=1 style='vertical-align:16px'>
+	<a href='./en/'>English</a> |
+	Japanese
+</font>
+<hr><!-- ________________________________________ -->
+</div>
+
+<div id=form>
+<p>下の枠に比較したい文章を入れてくだちい。差分 (diff) を表示します。</p>
+
+<form method=POST id=difff name=difff onsubmit='compareAndRender(); return false;'>
+<table cellspacing=0>
+<tr>
+	<td class=n><textarea name=sequenceA rows=20>下記の文章を比較してください。
+   Betty Botter bought some butter, 
+But, she said, this butter's bitter;
+If I put it in my batter,
+It will make my batter bitter,
+But a bit of better butter
+Will make my batter better.
+So she bought a bit of butter
+Better than her bitter butter,
+And she put it in her batter,
+And it made her batter better,
+So 'twas better Betty Botter
+Bought a bit of better butter.</textarea></td>
+	<td class=n><textarea name=sequenceB rows=20>下記の文章を，ﾋﾋ較してくだちい．
+Betty Botter bought some butter,
+But, she said, the butter's bitter;
+If I put it in my batter,
+That will make my batter bitter.
+But a bit of better butter, 
+That will make my batter better.
+So she bought a bit of butter
+Better than her bitter butter.
+And she put it in her batter,
+And it made her batter better.
+So it was better Betty Botter
+Bought a bit of better butter.</textarea></td>
+</tr>
+</table>
+
+<p><input type=submit value='比較する'></p>
+</form>
+</div>
+
+<!-- 動的に結果を表示するエリア -->
+<div id="result-area"></div>
+
+</body>
+</html>
