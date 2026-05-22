@@ -1,4 +1,5 @@
 difff-kai《ﾃﾞｭﾌﾌ改》
+https://murapat.github.io/difff-kai/
 ======================
 
 ウェブベースのテキスト比較ツールです。本家サイトが落ちていたため、Javascript版に移植してこちらで公開しています。 
